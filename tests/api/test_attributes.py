@@ -1,13 +1,15 @@
 import json
 
-import graphene
 import pytest
+
+import graphene
 from django.shortcuts import reverse
-from tests.utils import get_graphql_content
-from saleor.product.models import (
-    Category, Attribute, AttributeValue)
+from django.template.defaultfilters import slugify
+from saleor.graphql.product.types import (
+    AttributeValueType, resolve_attribute_value_type)
 from saleor.graphql.product.utils import attributes_to_hstore
-from saleor.graphql.product.types import resolve_attribute_value_type, AttributeValueType
+from saleor.product.models import Attribute, AttributeValue, Category
+from tests.utils import get_graphql_content
 
 
 def test_attributes_to_hstore(product, color_attribute):
@@ -92,10 +94,9 @@ def test_attributes_in_category_query(user_api_client, product):
 
 CREATE_ATTRIBUTES_QUERY = """
     mutation createAttribute(
-            $name: String!, $slug: String!,
-            $values: [AttributeValueCreateInput]) {
+            $name: String!, $values: [AttributeCreateValueInput]) {
         attributeCreate(
-                input: {name: $name, slug: $slug, values: $values}) {
+                input: {name: $name, values: $values}) {
             errors {
                 field
                 message
@@ -115,9 +116,8 @@ CREATE_ATTRIBUTES_QUERY = """
 
 def test_create_attribute(admin_api_client):
     query = CREATE_ATTRIBUTES_QUERY
-    name = 'test name'
-    slug = 'test-slug'
-    variables = json.dumps({'name': name, 'slug': slug, 'values': []})
+    name = 'Test name'
+    variables = json.dumps({'name': name, 'values': []})
     response = admin_api_client.post(
         reverse('api'), {'query': query, 'variables': variables})
     content = get_graphql_content(response)
@@ -125,17 +125,15 @@ def test_create_attribute(admin_api_client):
     assert not content['data']['attributeCreate']['errors']
     data = content['data']['attributeCreate']['attribute']
     assert data['name'] == name
-    assert data['slug'] == slug
+    assert data['slug'] == slugify(name)
     assert not data['values']
 
 
 def test_create_attribute_and_attribute_values(admin_api_client):
     query = CREATE_ATTRIBUTES_QUERY
     name = 'Value name'
-    slug = 'value-slug'
     variables = json.dumps({
-        'name': 'Example name', 'slug': 'example-slug',
-        'values': [{'slug': slug, 'name': name, 'value': '#1231'}]})
+        'name': 'Example name', 'values': [{'name': name, 'value': '#1231'}]})
     response = admin_api_client.post(
         reverse('api'), {'query': query, 'variables': variables})
     content = get_graphql_content(response)
@@ -144,7 +142,7 @@ def test_create_attribute_and_attribute_values(admin_api_client):
     data = content['data']['attributeCreate']['attribute']['values']
     assert len(data) == 1
     assert data[0]['name'] == name
-    assert data[0]['slug'] == slug
+    assert data[0]['slug'] == slugify(name)
 
 
 def test_create_attribute_and_attribute_values_errors(admin_api_client):
@@ -152,8 +150,8 @@ def test_create_attribute_and_attribute_values_errors(admin_api_client):
     variables = json.dumps({
         'name': 'Example name', 'slug': 'example-slug',
         'values': [
-            {'slug': 'slug', 'name': 'Red Color', 'value': '#1231'},
-            {'slug': 'Incorrect slug', 'name': 'Red Color', 'value': '#121'}]})
+            {'name': 'Red Color', 'value': '#1231'},
+            {'name': 'Red Color', 'value': '#121'}]})
     response = admin_api_client.post(
         reverse('api'), {'query': query, 'variables': variables})
     content = get_graphql_content(response)
@@ -161,10 +159,6 @@ def test_create_attribute_and_attribute_values_errors(admin_api_client):
     assert errors
     assert errors[0]['field'] == 'values'
     assert errors[0]['message'] == 'Duplicated attribute value names provided.'
-    assert errors[1]['field'] == 'values:slug'
-    assert errors[1]['message'] == (
-        'Enter a valid \'slug\' consisting of letters, '
-        'numbers, underscores or hyphens.')
 
 
 def test_update_attribute(admin_api_client, color_attribute):
@@ -215,9 +209,9 @@ def test_delete_attribute(admin_api_client, color_attribute):
 def test_create_attribute_value(admin_api_client, color_attribute):
     attribute = color_attribute
     query = """
-    mutation createChoice($attribute: ID!, $name: String!, $slug: String!, $value: String!) {
+    mutation createChoice($attribute: ID!, $name: String!, $value: String!) {
         attributeValueCreate(
-        input: {attribute: $attribute, name: $name, slug: $slug, value: $value}) {
+        input: {attribute: $attribute, name: $name, value: $value}) {
             attributeValue {
                 name
                 slug
@@ -229,10 +223,9 @@ def test_create_attribute_value(admin_api_client, color_attribute):
     """
     attribute_id = graphene.Node.to_global_id('Attribute', attribute.id)
     name = 'test name'
-    slug = 'test-slug'
     value = 'test-string'
     variables = json.dumps(
-        {'name': name, 'slug': slug, 'value': value, 'attribute': attribute_id})
+        {'name': name, 'value': value, 'attribute': attribute_id})
     response = admin_api_client.post(
         reverse('api'), {'query': query, 'variables': variables})
     content = get_graphql_content(response)
@@ -240,7 +233,7 @@ def test_create_attribute_value(admin_api_client, color_attribute):
     data = content[
         'data']['attributeValueCreate']['attributeValue']
     assert data['name'] == name
-    assert data['slug'] == slug
+    assert data['slug'] == slugify(name)
     assert data['value'] == value
     assert data['type'] == 'STRING'
 
@@ -248,21 +241,22 @@ def test_create_attribute_value(admin_api_client, color_attribute):
 def test_update_attribute_value(admin_api_client, pink_attribute_value):
     value = pink_attribute_value
     query = """
-    mutation updateChoice($id: ID!, $name: String!, $slug: String!) {
+    mutation updateChoice(
+            $id: ID!, $name: String!, $slug: String!, $value: String!) {
         attributeValueUpdate(
-        id: $id, input: {name: $name, slug: $slug}) {
+        id: $id, input: {name: $name, slug: $slug, value: $value}) {
             attributeValue {
                 name
                 slug
+                value
             }
         }
     }
     """
     id = graphene.Node.to_global_id('AttributeValue', value.id)
-    name = 'Crimson'
-    slug = value.slug
+    name = 'Crimson name'
     variables = json.dumps(
-        {'name': name, 'slug': slug, 'id': id})
+        {'name': name, 'value': '#RED', 'slug': 'slug', 'id': id})
     response = admin_api_client.post(
         reverse('api'), {'query': query, 'variables': variables})
     content = get_graphql_content(response)
@@ -271,6 +265,7 @@ def test_update_attribute_value(admin_api_client, pink_attribute_value):
     data = content[
         'data']['attributeValueUpdate']['attributeValue']
     assert data['name'] == name == value.name
+    assert data['slug'] == slugify(name)
 
 
 def test_delete_attribute_value(

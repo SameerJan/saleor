@@ -52,7 +52,8 @@ class AttributeCreate(ModelMutation):
                 attribute_value.full_clean()
             except ValidationError as validation_errors:
                 for field in validation_errors.message_dict:
-                    # Attribute instance is not created yet so we cannot add it
+                    if field == 'attribute':
+                        continue
                     for message in validation_errors.message_dict[field]:
                         error_field = 'values:%(field)s' % {'field': field}
                         cls.add_error(errors, error_field, message)
