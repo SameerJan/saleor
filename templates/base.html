@@ -120,7 +120,8 @@
               <span>{% trans "menu" context "Hamburger button text" %}</span>
             </div>
             <a href="{% url 'home' %}">
-              <svg data-src="{% static "images/logo.svg" %}" height="38px" width="176px"/>
+              <!-- <svg data-src="{% static "images/logo.png" %}" height="38px" width="176px"/> -->
+              <img src="{% static "images/logo.png" %}" width="176px"/>
             </a>
           </div>
           <div class="col-2 col-md-4 navbar__search static">
@@ -193,14 +194,16 @@
   <footer class="footer">
     <div class="container">
       <div class="row">
-        <div class="col-md-3">
-          <a href="{% url 'home' %}" class="footer__logo">
-            <svg data-src="{% static "images/logo.svg" %}" height="38px" width="176px"/>
+        <!-- <div class="col-md-3"> -->
+        <div class="col-md-6">
+          <a href="{% url 'home' %}" class="footer__logo" style="font-size: 3em;color: white;">
+            <!-- <svg data-src="{% static "images/logo.svg" %}" height="38px" width="176px"/> -->
+            ANHAAR AL-ASAL
           </a>
         </div>
-        <div class="col-md-3 col-sm-6">
+        <!-- <div class="col-md-3 col-sm-6">
           {% menu site_menu=site.settings.bottom_menu %}
-        </div>
+        </div> -->
         <div class="col-md-3 col-sm-6">
           <ul>
             <li>
